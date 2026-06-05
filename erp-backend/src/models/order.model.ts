@@ -34,29 +34,35 @@ const RateCalculationSchema = new Schema(
   { _id: false }
 );
 
-const OrderItemSchema = new Schema(
-  {
-    itemRef: { type: Schema.Types.ObjectId, ref: "Item", required: true },
-    quantity: { type: Number, required: true },
-    rate: { type: Number },
-    rateCalculation: RateCalculationSchema
-  },
-  { _id: false }
-);
-
 const OrderSchema = new Schema({
-  orderNumber: { type: String, required: true, unique: true, trim: true },
-  customerRef: { type: Schema.Types.ObjectId, ref: "Customer", required: true },
-  orderDate: { type: Date, default: Date.now },
-  deliveryDate: { type: Date },
-  items: { type: [OrderItemSchema], required: true },
-  totalValue: { type: Number, default: 0 },
-  status: {
+  customerId: { type: Schema.Types.ObjectId, ref: "Customer" },
+  itemName: { type: String, trim: true },
+  itemSerialNumber: { type: String, trim: true },
+  dieSerialNumber: { type: String, trim: true },
+  boxType: {
     type: String,
-    default: "Pending",
-    enum: ["Pending", "In-Production", "Ready for Dispatch", "Dispatched"]
+    trim: true,
+    enum: ["Pizza", "Flap", "Carton", "Ghera Patti", "Z Patti"]
   },
-  paymentStatus: { type: String }
+  printed: { type: Boolean, default: false },
+  jobWorkerName: { type: String, trim: true },
+  boxSize: {
+    length: Number,
+    breadth: Number,
+    height: Number
+  },
+  sheetSize: {
+    length: Number,
+    breadth: Number
+  },
+  ply: { type: Number },
+  gsm: { type: Number },
+  quantityOrdered: { type: Number },
+  laminated: { type: Boolean, default: false },
+  status: { type: String, default: "Draft" },
+  estimatedCost: { type: Number },
+  createdAt: { type: Date, default: Date.now },
+  rateCalculation: RateCalculationSchema
 });
 
 export default mongoose.model("Order", OrderSchema);

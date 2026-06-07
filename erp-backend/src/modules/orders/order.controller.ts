@@ -16,11 +16,12 @@ export const createOrder = async (req: any, res: any) => {
   }
 };
 
+
 export const getOrders = async (req: any, res: any) => {
   try {
-    const orders = await Order.find().sort({
-      createdAt: -1,
-    });
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .limit(5);
 
     res.status(200).json({
       success: true,

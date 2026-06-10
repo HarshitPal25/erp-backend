@@ -20,4 +20,8 @@ app.get("/api/test", (req, res) => {
   });
 });
 
+import inventoryRoutes from "./routes/inventoryRoutes";
+
+app.use("/api/inventory", inventoryRoutes);
+
 export default app;

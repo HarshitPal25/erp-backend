@@ -1,7 +1,11 @@
 import mongoose, { Schema } from "mongoose";
 
 const OrderSchema = new Schema(
-  {
+{
+  // ==========================
+  // Order Information
+  // ==========================
+  orderInfo: {
     orderNumber: {
       type: String,
       required: true,
@@ -18,16 +22,139 @@ const OrderSchema = new Schema(
       required: true,
     },
 
-    itemSerialNumber: String,
-
-    dieSerialNumber: String,
-
     quantityOrdered: {
       type: Number,
       required: true,
     },
+  },
 
-    boxType: String,
+  // ==========================
+  // Box Specification
+  // ==========================
+  boxSpecification: {
+
+    boxType: {
+      type: String,
+      default: "",
+    },
+
+    boxesPerSheet: {
+      type: Number,
+      default: 0,
+    },
+
+    itemSerialNumber: {
+      type: String,
+      default: "",
+    },
+
+    dieSerialNumber: {
+      type: String,
+      default: "",
+    },
+
+    length: {
+      type: Number,
+      default: 0,
+    },
+
+    breadth: {
+      type: Number,
+      default: 0,
+    },
+
+    height: {
+      type: Number,
+      default: 0,
+    },
+
+    sheetLength: {
+      type: Number,
+      default: 0,
+    },
+
+    sheetBreadth: {
+      type: Number,
+      default: 0,
+    },
+  },
+
+  // ==========================
+  // Duplex Cost
+  // ==========================
+  duplexCost: {
+
+    length: {
+      type: Number,
+      default: 0,
+    },
+
+    breadth: {
+      type: Number,
+      default: 0,
+    },
+
+    gsm: {
+      type: Number,
+      default: 0,
+    },
+
+    rate: {
+      type: Number,
+      default: 0,
+    },
+
+    area: {
+      type: Number,
+      default: 0,
+    },
+
+    sheetWeight: {
+      type: Number,
+      default: 0,
+    },
+
+    qtyRequiredSheets: {
+      type: Number,
+      default: 0,
+    },
+
+    cost: {
+      type: Number,
+      default: 0,
+    },
+  },
+
+  // ==========================
+  // 2-Ply Cost
+  // ==========================
+  twoPlyCost: {
+
+    numberOfPly: {
+      type: String,
+      default: "",
+    },
+
+    gsmEachPly: {
+      type: Number,
+      default: 0,
+    },
+
+    ratePerRoll: {
+      type: Number,
+      default: 0,
+    },
+
+    totalCost: {
+      type: Number,
+      default: 0,
+    },
+  },
+
+  // ==========================
+  // Finishing
+  // ==========================
+  finishing: {
 
     printed: {
       type: Boolean,
@@ -39,31 +166,124 @@ const OrderSchema = new Schema(
       default: false,
     },
 
-    length: Number,
-    breadth: Number,
-    height: Number,
+    spotUVSize: {
+      type: Number,
+      default: 0,
+    },
 
-    sheetLength: Number,
-    sheetBreadth: Number,
+    spotUVSheets: {
+      type: Number,
+      default: 0,
+    },
 
-    ply: Number,
+    spotUVCost: {
+      type: Number,
+      default: 0,
+    },
 
-    gsm: Number,
-
-    status: {
-      type: String,
-      default: "Pending",
-      enum: [
-        "Pending",
-        "In-Production",
-        "Ready for Dispatch",
-        "Dispatched",
-      ],
+    laminationCost: {
+      type: Number,
+      default: 0,
     },
   },
-  {
-    timestamps: true,
-  }
+
+  // ==========================
+  // Processing Cost
+  // ==========================
+  processing: {
+
+    sheeterRate: {
+      type: Number,
+      default: 0,
+    },
+
+    pastingRate: {
+      type: Number,
+      default: 0,
+    },
+
+    dieRate: {
+      type: Number,
+      default: 0,
+    },
+
+    stitchRate: {
+      type: Number,
+      default: 0,
+    },
+
+    strapRate: {
+      type: Number,
+      default: 0,
+    },
+
+    totalProcessingCost: {
+      type: Number,
+      default: 0,
+    },
+  },
+
+  // ==========================
+  // Cost Summary
+  // ==========================
+  summary: {
+
+    duplexCost: {
+      type: Number,
+      default: 0,
+    },
+
+    twoPlyCost: {
+      type: Number,
+      default: 0,
+    },
+
+    spotUVCost: {
+      type: Number,
+      default: 0,
+    },
+
+    laminationCost: {
+      type: Number,
+      default: 0,
+    },
+
+    processingCost: {
+      type: Number,
+      default: 0,
+    },
+
+    perBoxCost: {
+      type: Number,
+      default: 0,
+    },
+
+    totalOrderCost: {
+      type: Number,
+      default: 0,
+    },
+  },
+
+  // ==========================
+  // Workflow
+  // ==========================
+  status: {
+    type: String,
+    enum: [
+      "Pending",
+      "Approved",
+      "In Production",
+      "Completed",
+      "Dispatched",
+      "Cancelled",
+    ],
+    default: "Pending",
+  },
+
+},
+{
+  timestamps: true,
+}
 );
 
 export default mongoose.model("Order", OrderSchema);

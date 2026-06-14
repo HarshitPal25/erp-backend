@@ -3,6 +3,7 @@ import cors from "cors";
 import authRoutes from "./modules/auth/auth.routes";
 import orderRoutes from "./modules/orders/order.routes";
 import customerRoutes from "./modules/customers/customer.routes";
+import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 const app = express();
 
 app.use(
@@ -15,6 +16,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.get("/api/test", (req, res) => {
   res.json({
     success: true,

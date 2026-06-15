@@ -31,9 +31,9 @@ export const getDashboardStats = async (_req: Request, res: Response) => {
       (r) => r.currentStock <= r.reorderLevel
     );
 
-    // Pending deliveries (orders not yet dispatched or cancelled)
+    // Pending deliveries (orders not yet completed, dispatched, or cancelled)
     const pendingDeliveries = await Order.countDocuments({
-      status: { $in: ["Pending", "Approved", "In Production", "Completed"] },
+      status: { $in: ["Pending", "Approved", "In Production"] },
     });
 
     // Calculate trend percentages

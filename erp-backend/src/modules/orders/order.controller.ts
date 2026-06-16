@@ -156,10 +156,13 @@ async function deductInventoryOnCompletion(order: any) {
 }
 
 export const createOrder = async (req: any, res: any) => {
+  console.log("========== CREATE ORDER ==========");
+  console.log("BODY:");
+  console.log(req.body);
+
   try {
     const body = req.body;
 
-    // Map flat frontend fields into the nested schema structure
     const orderDoc = {
       orderInfo: {
         orderNumber: body.orderNumber,
@@ -188,14 +191,23 @@ export const createOrder = async (req: any, res: any) => {
       status: "Pending",
     };
 
+    console.log("ORDER DOC:");
+    console.log(orderDoc);
+
     const order = await Order.create(orderDoc);
 
-    res.status(201).json({
+    console.log("ORDER SAVED");
+    console.log(order);
+
+    return res.status(201).json({
       success: true,
-      data: flattenOrder(order.toObject()),
+      data: flattenOrder(order),
     });
   } catch (error: any) {
-    res.status(500).json({
+    console.log("========== ERROR ==========");
+    console.error(error);
+
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -287,9 +299,17 @@ export const updateOrderStatus = async (req: any, res: any) => {
       inventoryDeductions,
     });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+  console.log("========== CREATE ORDER ERROR ==========");
+  console.error(error);
+
+  if (error.errors) {
+    console.log(error.errors);
   }
+
+  res.status(500).json({
+    success: false,
+    message: error.message,
+    stack: error.stack,
+  });
+}
 };

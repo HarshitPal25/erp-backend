@@ -5,12 +5,16 @@ import StockTransaction from "../../models/StockTransaction";
 
 // Helper: flatten nested order doc into a flat object for the frontend
 function flattenOrder(o: any) {
+  const qtyOrdered = o.orderInfo?.quantityOrdered || o.quantityOrdered || 0;
+  const qtyDelivered = o.quantityDelivered || 0;
   return {
     _id: o._id,
     orderNumber: o.orderInfo?.orderNumber || o.orderNumber || "—",
     customerName: o.orderInfo?.customerName || o.customerName || "—",
     itemName: o.orderInfo?.itemName || o.itemName || "—",
-    quantityOrdered: o.orderInfo?.quantityOrdered || o.quantityOrdered || 0,
+    quantityOrdered: qtyOrdered,
+    quantityDelivered: qtyDelivered,
+    quantityRemaining: Math.max(0, qtyOrdered - qtyDelivered),
     itemSerialNumber: o.boxSpecification?.itemSerialNumber || o.itemSerialNumber || "",
     dieSerialNumber: o.boxSpecification?.dieSerialNumber || o.dieSerialNumber || "",
     boxType: o.boxSpecification?.boxType || o.boxType || "",
@@ -276,10 +280,19 @@ export const updateOrderStatus = async (req: any, res: any) => {
 
     const previousStatus = currentOrder.status;
 
+    // Build update fields
+    const updateFields: any = { status };
+
+    // If completing, auto-set delivery to 100%
+    if (status === "Completed") {
+      const totalOrdered = currentOrder.orderInfo?.quantityOrdered || 0;
+      updateFields.quantityDelivered = totalOrdered;
+    }
+
     // Update the status
     const order = await Order.findByIdAndUpdate(
       id,
-      { status },
+      updateFields,
       { new: true }
     ).lean();
 
@@ -299,17 +312,78 @@ export const updateOrderStatus = async (req: any, res: any) => {
       inventoryDeductions,
     });
   } catch (error: any) {
-  console.log("========== CREATE ORDER ERROR ==========");
-  console.error(error);
-
-  if (error.errors) {
-    console.log(error.errors);
+    console.error("updateOrderStatus error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+};
 
-  res.status(500).json({
-    success: false,
-    message: error.message,
-    stack: error.stack,
-  });
-}
+/**
+ * Update the delivered quantity for an order.
+ * If fully delivered, auto-set status to "Completed".
+ */
+export const updateDelivery = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { quantityDelivered } = req.body;
+
+    if (quantityDelivered == null || isNaN(Number(quantityDelivered)) || Number(quantityDelivered) < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "quantityDelivered must be a non-negative number",
+      });
+    }
+
+    const currentOrder = await Order.findById(id);
+    if (!currentOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const totalOrdered = currentOrder.orderInfo?.quantityOrdered || 0;
+    const delivered = Number(quantityDelivered);
+
+    if (delivered > totalOrdered) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot deliver more than ordered (${totalOrdered})`,
+      });
+    }
+
+    const updateFields: any = { quantityDelivered: delivered };
+
+    // Auto-complete the order if fully delivered
+    const previousStatus = currentOrder.status;
+    if (delivered >= totalOrdered && previousStatus !== "Completed" && previousStatus !== "Dispatched" && previousStatus !== "Cancelled") {
+      updateFields.status = "Completed";
+    }
+
+    const order = await Order.findByIdAndUpdate(id, updateFields, { new: true }).lean();
+
+    // If auto-completed, deduct inventory
+    let inventoryDeductions: string[] = [];
+    if (
+      updateFields.status === "Completed" &&
+      previousStatus !== "Completed" &&
+      previousStatus !== "Dispatched"
+    ) {
+      inventoryDeductions = await deductInventoryOnCompletion(order);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: flattenOrder(order),
+      inventoryDeductions,
+    });
+  } catch (error: any) {
+    console.error("updateDelivery error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };

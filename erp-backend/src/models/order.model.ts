@@ -265,6 +265,14 @@ const OrderSchema = new Schema(
   },
 
   // ==========================
+  // Delivery Tracking
+  // ==========================
+  quantityDelivered: {
+    type: Number,
+    default: 0,
+  },
+
+  // ==========================
   // Workflow
   // ==========================
   status: {

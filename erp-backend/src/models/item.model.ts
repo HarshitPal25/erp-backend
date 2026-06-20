@@ -6,7 +6,7 @@ const ItemSchema = new Schema({
   type: {
     type: String,
     required: true,
-    enum: ["RawMaterial", "FinishedGood", "Consumable"]
+    enum: ["Duplex", "Reel", "PrintedPaper", "FinishedGood"]
   },
   category: { type: String, required: true, trim: true },
   specifications: {

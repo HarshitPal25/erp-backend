@@ -10,12 +10,9 @@ const STOCK_CATEGORIES = [
   "Duplex Reel",
   "Corrugated Rolls",
   "Lamination Film",
-  "Fevicol",
-  "Corrugation Gum",
-  "Pasting Gum",
-  "Stitching Wire",
-  "Strapping Bundles",
   "Printing Plates",
+  "Printed Duplex Board",
+  "Printed Kraft",
 ];
 
 export const getCategories = async (_req: Request, res: Response) => {
@@ -115,6 +112,10 @@ export const createNewItem = async (req: Request, res: Response) => {
       warehouseLocation,
       initialStock,
       reorderLevel,
+      kraftReelInventoryId,
+      kraftReelQty,
+      semiKraftReelInventoryId,
+      semiKraftReelQty,
     } = req.body;
 
     if (!itemCode || !itemName) {
@@ -123,6 +124,61 @@ export const createNewItem = async (req: Request, res: Response) => {
         message: "itemCode and itemName are required",
       });
       return;
+    }
+
+    // If category is Corrugated Rolls, validate and deduct from reels
+    if (category === "Corrugated Rolls") {
+      const deductions: { inventoryId: string; qty: number; label: string }[] = [];
+
+      if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
+        deductions.push({
+          inventoryId: kraftReelInventoryId,
+          qty: Number(kraftReelQty),
+          label: "Kraft Reel",
+        });
+      }
+
+      if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
+        deductions.push({
+          inventoryId: semiKraftReelInventoryId,
+          qty: Number(semiKraftReelQty),
+          label: "Semi Kraft Reel",
+        });
+      }
+
+      // Validate stock for all deductions
+      for (const d of deductions) {
+        const inv = await Inventory.findById(d.inventoryId).populate("itemRef");
+        if (!inv) {
+          res.status(404).json({
+            success: false,
+            message: `${d.label} inventory item not found`,
+          });
+          return;
+        }
+        if (inv.currentStock < d.qty) {
+          const name = (inv.itemRef as any)?.itemName || d.label;
+          res.status(400).json({
+            success: false,
+            message: `Insufficient ${d.label} stock. "${name}" has ${inv.currentStock}, but ${d.qty} required.`,
+          });
+          return;
+        }
+      }
+
+      // Deduct stock from reels
+      for (const d of deductions) {
+        await Inventory.findByIdAndUpdate(d.inventoryId, {
+          $inc: { currentStock: -d.qty },
+        });
+        await StockTransaction.create({
+          inventoryRef: d.inventoryId,
+          type: "OUT",
+          quantity: d.qty,
+          referenceNumber: itemCode,
+          notes: `${d.qty} ${d.label} consumed for Corrugated Roll: ${itemName}`,
+        });
+      }
     }
 
     // Create the item

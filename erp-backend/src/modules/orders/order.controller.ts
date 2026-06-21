@@ -2,6 +2,8 @@ import Order from "../../models/order.model";
 import Inventory from "../../models/Inventory.model";
 import Item from "../../models/item.model";
 import StockTransaction from "../../models/StockTransaction";
+import JobWork from "../../models/jobWork.model";
+import Dispatch from "../../models/dispatch.model";
 
 // Helper: flatten nested order doc into a flat object for the frontend
 function flattenOrder(o: any) {
@@ -11,6 +13,7 @@ function flattenOrder(o: any) {
     _id: o._id,
     orderNumber: o.orderInfo?.orderNumber || o.orderNumber || "—",
     customerName: o.orderInfo?.customerName || o.customerName || "—",
+    itemBrand: o.orderInfo?.itemBrand || o.itemBrand || "",
     itemName: o.orderInfo?.itemName || o.itemName || "—",
     quantityOrdered: qtyOrdered,
     quantityDelivered: qtyDelivered,
@@ -25,6 +28,9 @@ function flattenOrder(o: any) {
     sheetBreadth: o.boxSpecification?.sheetBreadth || o.sheetBreadth || 0,
     printed: o.finishing?.printed || o.printed || false,
     laminated: o.finishing?.laminated || o.laminated || false,
+    productionStage: o.productionStage || "Not Started",
+    jobWorkRef: o.jobWorkRef || null,
+    dispatchRef: o.dispatchRef || null,
     status: o.status || "Pending",
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
@@ -159,6 +165,18 @@ async function deductInventoryOnCompletion(order: any) {
   return results;
 }
 
+async function nextDispatchNumber() {
+  const year = new Date().getFullYear();
+  const count = await Dispatch.countDocuments({
+    dispatchNo: { $regex: `^DISP-${year}-` },
+  });
+  return `DISP-${year}-${String(count + 1).padStart(3, "0")}`;
+}
+
+function getOrderJobType(order: any) {
+  return order.finishing?.laminated ? "Printed+Laminated" : "Printed";
+}
+
 export const createOrder = async (req: any, res: any) => {
   console.log("========== CREATE ORDER ==========");
   console.log("BODY:");
@@ -171,6 +189,7 @@ export const createOrder = async (req: any, res: any) => {
       orderInfo: {
         orderNumber: body.orderNumber,
         customerName: body.customerName,
+        itemBrand: body.itemBrand || "",
         itemName: body.itemName,
         quantityOrdered: Number(body.quantityOrdered) || 0,
       },
@@ -381,6 +400,222 @@ export const updateDelivery = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("updateDelivery error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const createJobWorkFromOrder = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { inventoryRef, quantity, jobNumber } = req.body;
+
+    if (!inventoryRef) {
+      return res.status(400).json({
+        success: false,
+        message: "inventoryRef is required",
+      });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (!order.finishing?.printed) {
+      return res.status(400).json({
+        success: false,
+        message: "Only printed orders can be sent to job work",
+      });
+    }
+
+    if ((order as any).jobWorkRef) {
+      return res.status(400).json({
+        success: false,
+        message: "Order is already linked to a job work",
+      });
+    }
+
+    const qty = Number(quantity) || order.orderInfo?.quantityOrdered || 0;
+    if (!qty || qty <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "quantity must be a positive number",
+      });
+    }
+
+    const inventory = await Inventory.findById(inventoryRef).populate("itemRef");
+    if (!inventory) {
+      return res.status(404).json({
+        success: false,
+        message: "Inventory item not found",
+      });
+    }
+
+    if (inventory.currentStock < qty) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock. Available: ${inventory.currentStock}, Requested: ${qty}`,
+      });
+    }
+
+    const itemDoc = inventory.itemRef as any;
+    const materialName = itemDoc?.itemName || itemDoc?.name || "Unknown Material";
+    const resolvedJobNumber =
+      typeof jobNumber === "string" && jobNumber.trim() !== ""
+        ? jobNumber.trim()
+        : `JOB-${order.orderInfo?.orderNumber || String(order._id).slice(-6)}`;
+    const jobType = getOrderJobType(order);
+
+    await Inventory.findByIdAndUpdate(inventoryRef, {
+      $inc: { currentStock: -qty },
+    });
+
+    await StockTransaction.create({
+      inventoryRef,
+      type: "OUT",
+      quantity: qty,
+      referenceNumber: resolvedJobNumber,
+      notes: `Order ${order.orderInfo?.orderNumber || ""} sent to ${jobType} job work`,
+    });
+
+    const job = await JobWork.create({
+      jobNumber: resolvedJobNumber,
+      jobType,
+      inventoryRef,
+      sourceOrderRef: order._id,
+      materialName,
+      quantity: qty,
+      status: "Pending",
+    });
+
+    order.jobWorkRef = job._id as any;
+    order.productionStage = "Sent to Job Work";
+    order.status = "In Production";
+    await order.save();
+
+    const populatedJob = await JobWork.findById(job._id)
+      .populate({
+        path: "inventoryRef",
+        populate: { path: "itemRef" },
+      })
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      data: {
+        order: flattenOrder(order),
+        job: populatedJob,
+      },
+    });
+  } catch (error: any) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Job number already exists",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const createDispatchFromOrder = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+    const { customerAddress, dispatchDate, quantity, senderName } = req.body;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if ((order as any).dispatchRef) {
+      return res.status(400).json({
+        success: false,
+        message: "Order is already linked to a dispatch",
+      });
+    }
+
+    const isPrintedOrder = Boolean(order.finishing?.printed);
+    const productionStage = (order as any).productionStage || "Not Started";
+    const printedReadyStages = ["Printed", "Printed & Laminated"];
+    if (isPrintedOrder && !printedReadyStages.includes(productionStage)) {
+      return res.status(400).json({
+        success: false,
+        message: "Printed orders can be dispatched only after job work is completed",
+      });
+    }
+
+    const qtyOrdered = order.orderInfo?.quantityOrdered || 0;
+    const qtyDelivered = (order as any).quantityDelivered || 0;
+    const qtyRemaining = Math.max(0, qtyOrdered - qtyDelivered);
+    const dispatchQty = Number(quantity) || qtyRemaining || qtyOrdered;
+    const maxDispatchQty = qtyRemaining > 0 ? qtyRemaining : qtyOrdered;
+
+    if (!dispatchQty || dispatchQty <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "quantity must be a positive number",
+      });
+    }
+
+    if (dispatchQty > maxDispatchQty) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot dispatch more than remaining (${maxDispatchQty})`,
+      });
+    }
+
+    if (typeof customerAddress !== "string" || customerAddress.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: "customerAddress is required",
+      });
+    }
+
+    const dispatch = await Dispatch.create({
+      dispatchNo: await nextDispatchNumber(),
+      dispatchDate: dispatchDate || new Date().toISOString().slice(0, 10),
+      customerName: order.orderInfo?.customerName || "",
+      customerAddress: customerAddress.trim(),
+      senderName: senderName || "Amar Packers",
+      sourceOrderRef: order._id,
+      status: "Pending",
+      items: [
+        {
+          id: String(order._id),
+          itemName: order.orderInfo?.itemName || "",
+          brand: order.orderInfo?.itemBrand || "",
+          boxName: order.boxSpecification?.boxType || order.orderInfo?.itemName || "",
+          quantity: dispatchQty,
+        },
+      ],
+    });
+
+    order.dispatchRef = dispatch._id as any;
+    order.status = "Dispatched";
+    order.quantityDelivered = Math.min(qtyOrdered, qtyDelivered + dispatchQty);
+    await order.save();
+
+    res.status(201).json({
+      success: true,
+      data: {
+        order: flattenOrder(order),
+        dispatch,
+      },
+    });
+  } catch (error: any) {
     res.status(500).json({
       success: false,
       message: error.message,

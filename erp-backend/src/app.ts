@@ -27,9 +27,11 @@ app.get("/api/test", (req, res) => {
 import inventoryRoutes from "./routes/inventoryRoutes";
 import jobWorkRoutes from "./modules/jobwork/jobWork.routes";
 import itemsRoutes from "./modules/items/items.routes";
+import dispatchRoutes from "./modules/dispatch/dispatch.routes";
 
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/jobwork", jobWorkRoutes);
 app.use("/api/items", itemsRoutes);
+app.use("/api/dispatch", dispatchRoutes);
 
 export default app;

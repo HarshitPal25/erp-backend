@@ -17,6 +17,11 @@ const OrderSchema = new Schema(
       required: true,
     },
 
+    itemBrand: {
+      type: String,
+      default: "",
+    },
+
     itemName: {
       type: String,
       required: true,
@@ -275,6 +280,29 @@ const OrderSchema = new Schema(
   // ==========================
   // Workflow
   // ==========================
+  productionStage: {
+    type: String,
+    enum: [
+      "Not Started",
+      "Sent to Job Work",
+      "Printed",
+      "Printed & Laminated",
+    ],
+    default: "Not Started",
+  },
+
+  jobWorkRef: {
+    type: Schema.Types.ObjectId,
+    ref: "JobWork",
+    default: null,
+  },
+
+  dispatchRef: {
+    type: Schema.Types.ObjectId,
+    ref: "Dispatch",
+    default: null,
+  },
+
   status: {
     type: String,
     enum: [

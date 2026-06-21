@@ -2,6 +2,17 @@ import JobWork from "../../models/jobWork.model";
 import Inventory from "../../models/Inventory.model";
 import Item from "../../models/item.model";
 import StockTransaction from "../../models/StockTransaction";
+import Order from "../../models/order.model";
+
+function getCompletedProductionStage(jobType: string) {
+  return jobType === "Printed+Laminated" ? "Printed & Laminated" : "Printed";
+}
+
+function getOutputCategory(jobType: string) {
+  if (jobType === "Printed") return "Printed Stock";
+  if (jobType === "Printed+Laminated") return "Printed+Laminated Stock";
+  return "Printed+SpotUV Stock";
+}
 
 /**
  * GET /api/jobwork
@@ -44,7 +55,7 @@ export const getJobWorks = async (req: any, res: any) => {
  */
 export const createJobWork = async (req: any, res: any) => {
   try {
-    const { jobNumber, jobType, inventoryRef, quantity } = req.body;
+    const { jobNumber, jobType, inventoryRef, quantity, sourceOrderRef } = req.body;
 
     if (!jobNumber || !jobType || !inventoryRef || !quantity) {
       return res.status(400).json({
@@ -53,10 +64,10 @@ export const createJobWork = async (req: any, res: any) => {
       });
     }
 
-    if (!["Printed", "Printed+SpotUV"].includes(jobType)) {
+    if (!["Printed", "Printed+SpotUV", "Printed+Laminated"].includes(jobType)) {
       return res.status(400).json({
         success: false,
-        message: "jobType must be 'Printed' or 'Printed+SpotUV'",
+        message: "jobType must be 'Printed', 'Printed+SpotUV', or 'Printed+Laminated'",
       });
     }
 
@@ -107,6 +118,7 @@ export const createJobWork = async (req: any, res: any) => {
       jobNumber,
       jobType,
       inventoryRef,
+      sourceOrderRef: sourceOrderRef || null,
       materialName,
       quantity: qty,
       status: "Pending",
@@ -182,7 +194,7 @@ export const completeJobWork = async (req: any, res: any) => {
         itemCode,
         itemName: outputItemName,
         type: "FinishedGood",
-        category: job.jobType === "Printed" ? "Printed Stock" : "Printed+SpotUV Stock",
+        category: getOutputCategory(job.jobType),
         specifications: sourceItem?.specifications || {},
         unitOfMeasure: sourceItem?.unitOfMeasure || "Sheets",
       });
@@ -221,6 +233,12 @@ export const completeJobWork = async (req: any, res: any) => {
     job.status = "Completed";
     job.outputInventoryRef = outputInventory._id;
     await job.save();
+
+    if ((job as any).sourceOrderRef) {
+      await Order.findByIdAndUpdate((job as any).sourceOrderRef, {
+        productionStage: getCompletedProductionStage(job.jobType),
+      });
+    }
 
     // Return populated job
     const populated = await JobWork.findById(job._id)

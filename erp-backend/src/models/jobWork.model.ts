@@ -12,7 +12,13 @@ const JobWorkSchema = new Schema(
     jobType: {
       type: String,
       required: true,
-      enum: ["Printed", "Printed+SpotUV"],
+      enum: ["Printed", "Printed+SpotUV", "Printed+Laminated"],
+    },
+
+    sourceOrderRef: {
+      type: Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
     },
 
     // Reference to the source inventory record

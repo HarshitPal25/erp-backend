@@ -49,7 +49,17 @@ export const getInventory = async (req: Request, res: Response) => {
 
 export const addStockTransaction = async (req: Request, res: Response) => {
   try {
-    const { inventoryRef, type, quantity, referenceNumber, notes } = req.body;
+    const {
+      inventoryRef,
+      type,
+      quantity,
+      referenceNumber,
+      notes,
+      kraftReelQty,
+      semiKraftReelQty,
+      kraftReelInventoryId,
+      semiKraftReelInventoryId,
+    } = req.body;
 
     if (!inventoryRef || !type || !quantity) {
       res.status(400).json({
@@ -57,6 +67,44 @@ export const addStockTransaction = async (req: Request, res: Response) => {
         message: "inventoryRef, type, and quantity are required",
       });
       return;
+    }
+
+    // Validate reel deductions if any
+    const deductions: { inventoryId: string; qty: number; label: string }[] = [];
+    if (type === "IN") {
+      if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
+        deductions.push({
+          inventoryId: kraftReelInventoryId,
+          qty: Number(kraftReelQty),
+          label: "Kraft Reel",
+        });
+      }
+      if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
+        deductions.push({
+          inventoryId: semiKraftReelInventoryId,
+          qty: Number(semiKraftReelQty),
+          label: "Semi Kraft Reel",
+        });
+      }
+
+      for (const d of deductions) {
+        const inv = await Inventory.findById(d.inventoryId).populate("itemRef");
+        if (!inv) {
+          res.status(404).json({
+            success: false,
+            message: `${d.label} inventory item not found`,
+          });
+          return;
+        }
+        if (inv.currentStock < d.qty) {
+          const name = (inv.itemRef as any)?.itemName || d.label;
+          res.status(400).json({
+            success: false,
+            message: `Insufficient ${d.label} stock. "${name}" has ${inv.currentStock}, but ${d.qty} required.`,
+          });
+          return;
+        }
+      }
     }
 
     const transaction = await StockTransaction.create({
@@ -74,6 +122,20 @@ export const addStockTransaction = async (req: Request, res: Response) => {
       update.lastRestockedDate = new Date();
     }
     await Inventory.findByIdAndUpdate(inventoryRef, update);
+
+    // Perform reel deductions
+    for (const d of deductions) {
+      await Inventory.findByIdAndUpdate(d.inventoryId, {
+        $inc: { currentStock: -d.qty },
+      });
+      await StockTransaction.create({
+        inventoryRef: d.inventoryId,
+        type: "OUT",
+        quantity: d.qty,
+        referenceNumber: referenceNumber,
+        notes: `${d.qty} ${d.label} consumed for stock IN of ${referenceNumber}`,
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -181,6 +243,27 @@ export const createNewItem = async (req: Request, res: Response) => {
       }
     }
 
+    let linkedReels: any = undefined;
+    if (category === "Corrugated Rolls") {
+      const initStockNum = Number(initialStock);
+      linkedReels = {};
+      if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
+        linkedReels.kraft = {
+          inventoryId: kraftReelInventoryId,
+          ratio: initStockNum > 0 ? Number(kraftReelQty) / initStockNum : 0,
+        };
+      }
+      if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
+        linkedReels.semiKraft = {
+          inventoryId: semiKraftReelInventoryId,
+          ratio: initStockNum > 0 ? Number(semiKraftReelQty) / initStockNum : 0,
+        };
+      }
+      if (Object.keys(linkedReels).length === 0) {
+        linkedReels = undefined;
+      }
+    }
+
     // Create the item
     const item = await Item.create({
       itemCode,
@@ -189,6 +272,7 @@ export const createNewItem = async (req: Request, res: Response) => {
       category,
       specifications: specifications || {},
       unitOfMeasure,
+      linkedReels,
     });
 
     // Create inventory record

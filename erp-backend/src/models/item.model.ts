@@ -3,10 +3,11 @@ import mongoose, { Schema } from "mongoose";
 const ItemSchema = new Schema({
   itemCode: { type: String, required: true, unique: true, trim: true },
   itemName: { type: String, required: true, trim: true },
+  brand: { type: String, trim: true },
   type: {
     type: String,
     required: true,
-    enum: ["Duplex", "Reel", "PrintedPaper", "FinishedGood"]
+    enum: ["Duplex", "Reel", "PrintedPaper", "FinishedGood", "Consumable", "RawMaterial"]
   },
   category: { type: String, required: true, trim: true },
   specifications: {
@@ -15,7 +16,28 @@ const ItemSchema = new Schema({
     ply: { type: String },
     flute: { type: String }
   },
-  unitOfMeasure: { type: String, required: true, trim: true }
+  boxSpecification: {
+    boxType: { type: String, default: "" },
+    boxesPerSheet: { type: Number, default: 1 },
+    itemSerialNumber: { type: String, default: "" },
+    dieSerialNumber: { type: String, default: "" },
+    length: { type: Number, default: 0 },
+    breadth: { type: Number, default: 0 },
+    height: { type: Number, default: 0 },
+    sheetLength: { type: Number, default: 0 },
+    sheetBreadth: { type: Number, default: 0 },
+  },
+  unitOfMeasure: { type: String, required: true, trim: true },
+  linkedReels: {
+    kraft: {
+      inventoryId: { type: Schema.Types.ObjectId, ref: "Inventory" },
+      ratio: { type: Number },
+    },
+    semiKraft: {
+      inventoryId: { type: Schema.Types.ObjectId, ref: "Inventory" },
+      ratio: { type: Number },
+    },
+  },
 });
 
 export default mongoose.model("Item", ItemSchema);

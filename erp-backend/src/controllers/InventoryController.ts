@@ -28,10 +28,10 @@ export const getCategories = async (_req: Request, res: Response) => {
 
 export const getInventory = async (req: Request, res: Response) => {
   try {
-    const { category } = req.query;
+    const category = typeof req.query.category === "string" ? req.query.category : "";
 
     let filter = {};
-    if (category && category !== "All") {
+    if (category !== "" && category !== "All") {
       const itemIds = await Item.find({ category }).select("_id");
       filter = { itemRef: { $in: itemIds.map((i) => i._id) } };
     }
@@ -166,6 +166,7 @@ export const createNewItem = async (req: Request, res: Response) => {
   try {
     const {
       itemCode,
+      brand,
       itemName,
       type,
       category,
@@ -267,6 +268,7 @@ export const createNewItem = async (req: Request, res: Response) => {
     // Create the item
     const item = await Item.create({
       itemCode,
+      brand,
       itemName,
       type,
       category,

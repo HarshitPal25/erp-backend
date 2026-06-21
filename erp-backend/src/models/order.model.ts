@@ -17,6 +17,11 @@ const OrderSchema = new Schema(
       required: true,
     },
 
+    itemBrand: {
+      type: String,
+      default: "",
+    },
+
     itemName: {
       type: String,
       required: true,

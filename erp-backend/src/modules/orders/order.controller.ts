@@ -11,6 +11,7 @@ function flattenOrder(o: any) {
     _id: o._id,
     orderNumber: o.orderInfo?.orderNumber || o.orderNumber || "—",
     customerName: o.orderInfo?.customerName || o.customerName || "—",
+    itemBrand: o.orderInfo?.itemBrand || o.itemBrand || "",
     itemName: o.orderInfo?.itemName || o.itemName || "—",
     quantityOrdered: qtyOrdered,
     quantityDelivered: qtyDelivered,
@@ -171,6 +172,7 @@ export const createOrder = async (req: any, res: any) => {
       orderInfo: {
         orderNumber: body.orderNumber,
         customerName: body.customerName,
+        itemBrand: body.itemBrand || "",
         itemName: body.itemName,
         quantityOrdered: Number(body.quantityOrdered) || 0,
       },

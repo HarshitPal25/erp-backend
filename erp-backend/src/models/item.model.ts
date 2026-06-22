@@ -40,4 +40,16 @@ const ItemSchema = new Schema({
   },
 });
 
+ItemSchema.index(
+  {
+    brand: 1,
+    itemName: 1,
+    type: 1,
+    category: 1,
+    "specifications.gsm": 1,
+    "specifications.dimensions": 1,
+  },
+  { unique: true }
+);
+
 export default mongoose.model("Item", ItemSchema);

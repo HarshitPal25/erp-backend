@@ -189,6 +189,40 @@ export const createNewItem = async (req: Request, res: Response) => {
       return;
     }
 
+    const normalizedBrand = (brand || "").trim();
+    const normalizedItemName = (itemName || "").trim();
+    const gsmRaw = specifications?.gsm;
+    const normalizedGsm =
+      gsmRaw !== undefined && gsmRaw !== null && String(gsmRaw).trim() !== "" && !isNaN(Number(gsmRaw))
+        ? Number(gsmRaw)
+        : undefined;
+    const normalizedDimensions =
+      typeof specifications?.dimensions === "string" && specifications.dimensions.trim() !== ""
+        ? specifications.dimensions.trim()
+        : undefined;
+    const normalizedSpecifications = {
+      ...(specifications || {}),
+      ...(normalizedGsm !== undefined ? { gsm: normalizedGsm } : {}),
+      ...(normalizedDimensions !== undefined ? { dimensions: normalizedDimensions } : {}),
+    };
+
+    const existing = await Item.findOne({
+      brand: normalizedBrand,
+      itemName: normalizedItemName,
+      type,
+      category,
+      "specifications.gsm": normalizedGsm ?? null,
+      "specifications.dimensions": normalizedDimensions ?? null,
+    });
+    if (existing) {
+      res.status(409).json({
+        success: false,
+        message:
+          "Inventory stock already exists for this brand, item name, type, category, GSM and size combination.",
+      });
+      return;
+    }
+
     // If category is Corrugated Rolls, validate and deduct from reels
     if (category === "Corrugated Rolls") {
       const deductions: { inventoryId: string; qty: number; label: string }[] = [];
@@ -265,14 +299,19 @@ export const createNewItem = async (req: Request, res: Response) => {
       }
     }
 
+    let finalItemCode = itemCode;
+    for (let n = 2; await Item.exists({ itemCode: finalItemCode }); n++) {
+      finalItemCode = `${itemCode}-${n}`;
+    }
+
     // Create the item
     const item = await Item.create({
-      itemCode,
-      brand,
-      itemName,
+      itemCode: finalItemCode,
+      brand: normalizedBrand,
+      itemName: normalizedItemName,
       type,
       category,
-      specifications: specifications || {},
+      specifications: normalizedSpecifications,
       unitOfMeasure,
       linkedReels,
     });

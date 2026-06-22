@@ -14,10 +14,7 @@ function getOutputCategory(jobType: string) {
   return "Printed+SpotUV Stock";
 }
 
-/**
- * GET /api/jobwork
- * List all jobs — pending first, completed at end, newest first within groups.
- */
+
 export const getJobWorks = async (req: any, res: any) => {
   try {
     const jobs = await JobWork.find()
@@ -46,13 +43,6 @@ export const getJobWorks = async (req: any, res: any) => {
   }
 };
 
-/**
- * POST /api/jobwork
- * Create a new job.
- * 1. Validate stock >= quantity
- * 2. Deduct stock from inventory
- * 3. Create StockTransaction OUT
- */
 export const createJobWork = async (req: any, res: any) => {
   try {
     const { jobNumber, jobType, inventoryRef, quantity, sourceOrderRef } = req.body;
@@ -144,15 +134,6 @@ export const createJobWork = async (req: any, res: any) => {
   }
 };
 
-/**
- * PATCH /api/jobwork/:id/complete
- * Complete a job.
- * 1. Find or create the output Item (e.g. "Printed (Kraft Reel 150 GSM)")
- * 2. Find or create the output Inventory record
- * 3. Add quantity to output inventory stock
- * 4. Create StockTransaction IN for output
- * 5. Mark job as Completed
- */
 export const completeJobWork = async (req: any, res: any) => {
   try {
     const { id } = req.params;
@@ -185,10 +166,12 @@ export const completeJobWork = async (req: any, res: any) => {
     // Find or create the output Item
     let outputItem = await Item.findOne({ itemName: outputItemName });
     if (!outputItem) {
-      // Generate a unique item code
       const codeBase = job.jobType === "Printed" ? "PRT" : "PRTUV";
       const count = await Item.countDocuments({ itemName: { $regex: `^${job.jobType}` } });
-      const itemCode = `${codeBase}-${String(count + 1).padStart(3, "0")}`;
+      let itemCode = `${codeBase}-${String(count + 1).padStart(3, "0")}`;
+      for (let n = count + 2; await Item.exists({ itemCode }); n++) {
+        itemCode = `${codeBase}-${String(n).padStart(3, "0")}`;
+      }
 
       outputItem = await Item.create({
         itemCode,
@@ -254,6 +237,7 @@ export const completeJobWork = async (req: any, res: any) => {
 
     res.status(200).json({ success: true, data: populated });
   } catch (error: any) {
+    console.error("completeJobWork error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

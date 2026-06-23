@@ -4,22 +4,56 @@ import type { Request } from "express";
 const SESSION_COOKIE_NAME = "amar_erp_session";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
-const DEFAULT_ALLOWED_EMAILS = [
-  "amarpackers.admin@gmail.com",
-  "amarpackers.delhi@gmail.com",
-  "amarpackers.finance@gmail.com",
-];
+export type Role = "admin" | "delhi" | "finance";
+
+const DEFAULT_ADMIN_EMAILS = ["amarpackers.admin@gmail.com"];
+const DEFAULT_DELHI_EMAILS = ["amarpackers.delhi@gmail.com"];
+const DEFAULT_FINANCE_EMAILS = ["amarpackers.finance@gmail.com"];
 
 type SessionPayload = {
   email: string;
   expiresAt: number;
 };
 
-function getAllowedEmails() {
-  return (process.env.AUTH_ALLOWED_EMAILS ?? DEFAULT_ALLOWED_EMAILS.join(","))
+function parseEmailList(value: string | undefined, fallback: string[]) {
+  return (value ?? fallback.join(","))
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function getRoleEmails(): Record<Role, string[]> {
+  return {
+    admin: parseEmailList(process.env.AUTH_ADMIN_EMAILS, DEFAULT_ADMIN_EMAILS),
+    delhi: parseEmailList(process.env.AUTH_DELHI_EMAILS, DEFAULT_DELHI_EMAILS),
+    finance: parseEmailList(process.env.AUTH_FINANCE_EMAILS, DEFAULT_FINANCE_EMAILS),
+  };
+}
+
+export function getRoleForEmail(email: string): Role | null {
+  const normalized = email.trim().toLowerCase();
+  const roleEmails = getRoleEmails();
+
+  for (const role of ["admin", "delhi", "finance"] as Role[]) {
+    if (roleEmails[role].includes(normalized)) {
+      return role;
+    }
+  }
+
+  return null;
+}
+
+function getAllowedEmails() {
+  const roleEmails = getRoleEmails();
+  const all = [...roleEmails.admin, ...roleEmails.delhi, ...roleEmails.finance];
+
+  // Backward-compatible: AUTH_ALLOWED_EMAILS still works as an extra allowlist,
+  // but the role-specific lists are the source of truth for permissions.
+  if (process.env.AUTH_ALLOWED_EMAILS) {
+    all.push(...parseEmailList(process.env.AUTH_ALLOWED_EMAILS, []));
+  }
+
+  return Array.from(new Set(all));
 }
 
 function getPassword() {

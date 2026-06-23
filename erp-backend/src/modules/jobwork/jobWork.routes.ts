@@ -4,13 +4,13 @@ import {
   createJobWork,
   completeJobWork,
 } from "./jobWork.controller";
-import { requireAuth } from "../../middleware/auth.middleware";
+import { requireAuth, requireAdmin, requireRole } from "../../middleware/auth.middleware";
 
 const router = Router();
 
 router.use(requireAuth);
 router.get("/", getJobWorks);
-router.post("/", createJobWork);
-router.patch("/:id/complete", completeJobWork);
+router.post("/", requireRole("admin", "delhi"), createJobWork);
+router.patch("/:id/complete", requireAdmin, completeJobWork);
 
 export default router;

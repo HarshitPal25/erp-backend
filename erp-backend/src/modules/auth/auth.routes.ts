@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createSessionToken,
   getExpiredSessionCookie,
+  getRoleForEmail,
   getSessionCookie,
   isAllowedEmail,
   isValidPassword,
@@ -27,6 +28,7 @@ router.post("/login", (req, res) => {
     success: true,
     data: {
       email,
+      role: getRoleForEmail(email),
     },
   });
 });
@@ -36,6 +38,7 @@ router.get("/me", requireAuth, (req: AuthenticatedRequest, res) => {
     success: true,
     data: {
       email: req.user?.email,
+      role: req.user?.role,
     },
   });
 });

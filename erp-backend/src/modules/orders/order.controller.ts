@@ -197,33 +197,33 @@ export const createOrder = async (req: any, res: any) => {
     const body = req.body;
 
     const orderDoc = {
-      orderInfo: {
-        orderNumber: body.orderNumber,
-        customerName: body.customerName,
-        itemBrand: body.itemBrand || "",
-        itemName: body.itemName,
-        quantityOrdered: Number(body.quantityOrdered) || 0,
-      },
-      boxSpecification: {
-        boxType: body.boxType || "",
-        boxesPerSheet: Number(body.boxesPerSheet) || 1,
-        itemSerialNumber: body.itemSerialNumber || "",
-        dieSerialNumber: body.dieSerialNumber || "",
-        length: Number(body.length) || 0,
-        breadth: Number(body.breadth) || 0,
-        height: Number(body.height) || 0,
-        sheetLength: Number(body.sheetLength) || 0,
-        sheetBreadth: Number(body.sheetBreadth) || 0,
-      },
-      finishing: {
-        printed: body.printed || false,
-        laminated: body.laminated || false,
-      },
-      twoPlyCost: {
-        numberOfPly: body.numberOf2Ply || "0",
-      },
-      status: "Pending",
-    };
+  orderInfo: {
+    orderNumber: body.orderNumber,
+    customerName: body.customerName,
+    itemBrand: body.itemBrand || "",
+    itemName: body.itemName,
+    quantityOrdered: Number(body.quantityOrdered) || 0,
+  },
+  boxSpecification: {
+    boxType: body.boxType || "",
+    boxesPerSheet: Number(body.boxesPerSheet) || 1,
+    itemSerialNumber: body.itemSerialNumber || "",
+    dieSerialNumber: body.dieSerialNumber || "",
+    length: Number(body.length) || 0,
+    breadth: Number(body.breadth) || 0,
+    height: Number(body.height) || 0,
+    sheetLength: Number(body.sheetLength) || 0,
+    sheetBreadth: Number(body.sheetBreadth) || 0,
+  },
+  finishing: {
+    printed: body.printed || false,
+    laminated: body.laminated || false,
+  },
+  twoPlyCost: {
+    numberOfPly: body.numberOf2Ply || "0",
+  },
+  status: "Pending" as const,
+};
 
     console.log("ORDER DOC:");
     console.log(orderDoc);

@@ -157,16 +157,15 @@ export function readSession(req: Request): SessionPayload | null {
   }
 }
 
-export function getSessionCookie(token: string) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
 
-  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${
+export function getSessionCookie(token: string) {
+  return `${SESSION_COOKIE_NAME}=${encodeURIComponent(
+    token
+  )}; HttpOnly; Path=/; Max-Age=${
     SESSION_TTL_MS / 1000
-  }; SameSite=Lax${secure}`;
+  }; SameSite=None; Secure`;
 }
 
 export function getExpiredSessionCookie() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-
-  return `${SESSION_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=None; Secure`;
 }

@@ -186,7 +186,7 @@ To protect proprietary business logic and sensitive operational workflows:
 
 ## Author
 
-**Adarsh Kumar**
+**Adarsh Kumar** | 
 **Harshit Pal**
 
 Designed and developed using **Node.js**, **Express.js**, **TypeScript**, and **MongoDB** to power a real-world ERP system for business process management.

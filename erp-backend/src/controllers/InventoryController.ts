@@ -13,6 +13,7 @@ const STOCK_CATEGORIES = [
   "Printing Plates",
   "Printed Duplex Board",
   "Printed Kraft",
+  "Printed Paper",
 ];
 
 export const getCategories = async (_req: Request, res: Response) => {
@@ -206,6 +207,7 @@ export const createNewItem = async (req: Request, res: Response) => {
       ...(normalizedDimensions !== undefined ? { dimensions: normalizedDimensions } : {}),
     };
 
+    // Check if item already exists in Item Master
     const existing = await Item.findOne({
       brand: normalizedBrand,
       itemName: normalizedItemName,
@@ -214,111 +216,124 @@ export const createNewItem = async (req: Request, res: Response) => {
       "specifications.gsm": normalizedGsm ?? null,
       "specifications.dimensions": normalizedDimensions ?? null,
     });
+
+    let itemId: any;
+
     if (existing) {
-      res.status(409).json({
-        success: false,
-        message:
-          "Inventory stock already exists for this brand, item name, type, category, GSM and size combination.",
+      // Item exists in Item Master — check if inventory record already exists
+      const existingInventory = await Inventory.findOne({ itemRef: existing._id });
+      if (existingInventory) {
+        res.status(409).json({
+          success: false,
+          message:
+            "Inventory record already exists for this item. Use stock transactions to update quantity.",
+        });
+        return;
+      }
+      // Reuse existing Item Master record
+      itemId = existing._id;
+    } else {
+      // Item does not exist — create it in Item Master first
+
+      // If category is Corrugated Rolls, validate and deduct from reels
+      if (category === "Corrugated Rolls") {
+        const deductions: { inventoryId: string; qty: number; label: string }[] = [];
+
+        if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
+          deductions.push({
+            inventoryId: kraftReelInventoryId,
+            qty: Number(kraftReelQty),
+            label: "Kraft Reel",
+          });
+        }
+
+        if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
+          deductions.push({
+            inventoryId: semiKraftReelInventoryId,
+            qty: Number(semiKraftReelQty),
+            label: "Semi Kraft Reel",
+          });
+        }
+
+        // Validate stock for all deductions
+        for (const d of deductions) {
+          const inv = await Inventory.findById(d.inventoryId).populate("itemRef");
+          if (!inv) {
+            res.status(404).json({
+              success: false,
+              message: `${d.label} inventory item not found`,
+            });
+            return;
+          }
+          if (inv.currentStock < d.qty) {
+            const name = (inv.itemRef as any)?.itemName || d.label;
+            res.status(400).json({
+              success: false,
+              message: `Insufficient ${d.label} stock. "${name}" has ${inv.currentStock}, but ${d.qty} required.`,
+            });
+            return;
+          }
+        }
+
+        // Deduct stock from reels
+        for (const d of deductions) {
+          await Inventory.findByIdAndUpdate(d.inventoryId, {
+            $inc: { currentStock: -d.qty },
+          });
+          await StockTransaction.create({
+            inventoryRef: d.inventoryId,
+            type: "OUT",
+            quantity: d.qty,
+            referenceNumber: itemCode,
+            notes: `${d.qty} ${d.label} consumed for Corrugated Roll: ${itemName}`,
+          });
+        }
+      }
+
+      let linkedReels: any = undefined;
+      if (category === "Corrugated Rolls") {
+        const initStockNum = Number(initialStock);
+        linkedReels = {};
+        if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
+          linkedReels.kraft = {
+            inventoryId: kraftReelInventoryId,
+            ratio: initStockNum > 0 ? Number(kraftReelQty) / initStockNum : 0,
+          };
+        }
+        if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
+          linkedReels.semiKraft = {
+            inventoryId: semiKraftReelInventoryId,
+            ratio: initStockNum > 0 ? Number(semiKraftReelQty) / initStockNum : 0,
+          };
+        }
+        if (Object.keys(linkedReels).length === 0) {
+          linkedReels = undefined;
+        }
+      }
+
+      let finalItemCode = itemCode;
+      for (let n = 2; await Item.exists({ itemCode: finalItemCode }); n++) {
+        finalItemCode = `${itemCode}-${n}`;
+      }
+
+      // Create the item
+      const item = await Item.create({
+        itemCode: finalItemCode,
+        brand: normalizedBrand,
+        itemName: normalizedItemName,
+        type,
+        category,
+        specifications: normalizedSpecifications,
+        unitOfMeasure,
+        linkedReels,
       });
-      return;
+
+      itemId = item._id;
     }
 
-    // If category is Corrugated Rolls, validate and deduct from reels
-    if (category === "Corrugated Rolls") {
-      const deductions: { inventoryId: string; qty: number; label: string }[] = [];
-
-      if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
-        deductions.push({
-          inventoryId: kraftReelInventoryId,
-          qty: Number(kraftReelQty),
-          label: "Kraft Reel",
-        });
-      }
-
-      if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
-        deductions.push({
-          inventoryId: semiKraftReelInventoryId,
-          qty: Number(semiKraftReelQty),
-          label: "Semi Kraft Reel",
-        });
-      }
-
-      // Validate stock for all deductions
-      for (const d of deductions) {
-        const inv = await Inventory.findById(d.inventoryId).populate("itemRef");
-        if (!inv) {
-          res.status(404).json({
-            success: false,
-            message: `${d.label} inventory item not found`,
-          });
-          return;
-        }
-        if (inv.currentStock < d.qty) {
-          const name = (inv.itemRef as any)?.itemName || d.label;
-          res.status(400).json({
-            success: false,
-            message: `Insufficient ${d.label} stock. "${name}" has ${inv.currentStock}, but ${d.qty} required.`,
-          });
-          return;
-        }
-      }
-
-      // Deduct stock from reels
-      for (const d of deductions) {
-        await Inventory.findByIdAndUpdate(d.inventoryId, {
-          $inc: { currentStock: -d.qty },
-        });
-        await StockTransaction.create({
-          inventoryRef: d.inventoryId,
-          type: "OUT",
-          quantity: d.qty,
-          referenceNumber: itemCode,
-          notes: `${d.qty} ${d.label} consumed for Corrugated Roll: ${itemName}`,
-        });
-      }
-    }
-
-    let linkedReels: any = undefined;
-    if (category === "Corrugated Rolls") {
-      const initStockNum = Number(initialStock);
-      linkedReels = {};
-      if (kraftReelInventoryId && Number(kraftReelQty) > 0) {
-        linkedReels.kraft = {
-          inventoryId: kraftReelInventoryId,
-          ratio: initStockNum > 0 ? Number(kraftReelQty) / initStockNum : 0,
-        };
-      }
-      if (semiKraftReelInventoryId && Number(semiKraftReelQty) > 0) {
-        linkedReels.semiKraft = {
-          inventoryId: semiKraftReelInventoryId,
-          ratio: initStockNum > 0 ? Number(semiKraftReelQty) / initStockNum : 0,
-        };
-      }
-      if (Object.keys(linkedReels).length === 0) {
-        linkedReels = undefined;
-      }
-    }
-
-    let finalItemCode = itemCode;
-    for (let n = 2; await Item.exists({ itemCode: finalItemCode }); n++) {
-      finalItemCode = `${itemCode}-${n}`;
-    }
-
-    // Create the item
-    const item = await Item.create({
-      itemCode: finalItemCode,
-      brand: normalizedBrand,
-      itemName: normalizedItemName,
-      type,
-      category,
-      specifications: normalizedSpecifications,
-      unitOfMeasure,
-      linkedReels,
-    });
-
-    // Create inventory record
+    // Create inventory record (works for both existing and new items)
     const inventory = await Inventory.create({
-      itemRef: item._id,
+      itemRef: itemId,
       warehouseLocation: warehouseLocation || "Unassigned",
       currentStock: Number(initialStock) || 0,
       reservedStock: 0,

@@ -6,6 +6,7 @@ import {
   updateDelivery,
   createJobWorkFromOrder,
   createDispatchFromOrder,
+  deleteOrder,
 } from "./order.controller";
 import { requireAuth, requireAdmin, requireRole } from "../../middleware/auth.middleware";
 
@@ -18,5 +19,6 @@ router.post("/:id/jobwork", requireAdmin, createJobWorkFromOrder);
 router.post("/:id/dispatch", requireAdmin, createDispatchFromOrder);
 router.patch("/:id/status", requireAdmin, updateOrderStatus);
 router.patch("/:id/delivery", requireAdmin, updateDelivery);
+router.delete("/:id", requireAdmin, deleteOrder);
 
 export default router;

@@ -538,6 +538,48 @@ export const createJobWorkFromOrder = async (req: any, res: any) => {
   }
 };
 
+export const deleteOrder = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if ((order as any).jobWorkRef) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This order has been sent to job work and cannot be deleted. Orders can only be deleted before they are sent to job work.",
+      });
+    }
+
+    if (order.status === "Dispatched" || (order as any).dispatchRef) {
+      return res.status(400).json({
+        success: false,
+        message: "Dispatched orders cannot be deleted.",
+      });
+    }
+
+    await Order.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order deleted",
+    });
+  } catch (error: any) {
+    console.error("deleteOrder error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 export const createDispatchFromOrder = async (req: any, res: any) => {
   try {
     const { id } = req.params;

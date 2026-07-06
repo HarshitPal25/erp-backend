@@ -11,9 +11,9 @@ const STOCK_CATEGORIES = [
   "Corrugated Rolls",
   "Lamination Film",
   "Printing Plates",
-  "Printed Duplex Board",
-  "Printed Kraft",
-  "Printed Paper",
+  "Printed Stock",
+  "Printed + Laminated Stock",
+  "Printed + Spot UV Stock",
 ];
 
 export const getCategories = async (_req: Request, res: Response) => {

@@ -8,10 +8,17 @@ function getCompletedProductionStage(jobType: string) {
   return jobType === "Printed+Laminated" ? "Printed & Laminated" : "Printed";
 }
 
+// printing prefix in the output item name, e.g. "Printed (base)" or "Printed + Laminated (base)"
+function getPrintedPrefix(jobType: string) {
+  if (jobType === "Printed+Laminated") return "Printed + Laminated";
+  if (jobType === "Printed+SpotUV") return "Printed + Spot UV";
+  return "Printed";
+}
+
 function getOutputCategory(jobType: string) {
-  if (jobType === "Printed") return "Printed Stock";
   if (jobType === "Printed+Laminated") return "Printed+Laminated Stock";
-  return "Printed+SpotUV Stock";
+  if (jobType === "Printed+SpotUV") return "Printed+SpotUV Stock";
+  return "Printed Stock";
 }
 
 
@@ -137,11 +144,24 @@ export const createJobWork = async (req: any, res: any) => {
 export const completeJobWork = async (req: any, res: any) => {
   try {
     const { id } = req.params;
+    const { outputItemId, producedSheets } = req.body;
 
-    const job = await JobWork.findById(id).populate({
-      path: "inventoryRef",
-      populate: { path: "itemRef" },
-    });
+    if (!outputItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "outputItemId is required (select the finished item to produce)",
+      });
+    }
+
+    const sheets = Number(producedSheets);
+    if (isNaN(sheets) || sheets <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "producedSheets must be a positive number",
+      });
+    }
+
+    const job = await JobWork.findById(id);
 
     if (!job) {
       return res.status(404).json({
@@ -157,38 +177,52 @@ export const completeJobWork = async (req: any, res: any) => {
       });
     }
 
-    const sourceItem = (job.inventoryRef as any)?.itemRef as any;
-    const sourceInventory = job.inventoryRef as any;
+    // The selected item is the BASE product. The output item will be a printed variant of this base product.
+    const baseItem = await Item.findById(outputItemId);
+    if (!baseItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected item not found in Item Master",
+      });
+    }
 
-    // Build the output item name
-    const outputItemName = `${job.jobType} (${job.materialName})`;
+    const prefix = getPrintedPrefix(job.jobType);
+    const outputItemName = `${prefix} (${baseItem.itemName})`;
 
-    // Find or create the output Item
+    // Find or create the printed-variant finished item (always in Sheets).
     let outputItem = await Item.findOne({ itemName: outputItemName });
     if (!outputItem) {
-      const codeBase = job.jobType === "Printed" ? "PRT" : "PRTUV";
-      const count = await Item.countDocuments({ itemName: { $regex: `^${job.jobType}` } });
-      let itemCode = `${codeBase}-${String(count + 1).padStart(3, "0")}`;
-      for (let n = count + 2; await Item.exists({ itemCode }); n++) {
+      const codeBase =
+        job.jobType === "Printed+Laminated"
+          ? "PRTLAM"
+          : job.jobType === "Printed+SpotUV"
+          ? "PRTUV"
+          : "PRT";
+      const count = await Item.countDocuments({ itemCode: { $regex: `^${codeBase}-` } });
+      let n = count + 1;
+      let itemCode = `${codeBase}-${String(n).padStart(3, "0")}`;
+      while (await Item.exists({ itemCode })) {
+        n++;
         itemCode = `${codeBase}-${String(n).padStart(3, "0")}`;
       }
 
       outputItem = await Item.create({
         itemCode,
         itemName: outputItemName,
+        brand: (baseItem as any).brand,
         type: "FinishedGood",
         category: getOutputCategory(job.jobType),
-        specifications: sourceItem?.specifications || {},
-        unitOfMeasure: sourceItem?.unitOfMeasure || "Sheets",
+        specifications: (baseItem as any).specifications || {},
+        unitOfMeasure: "Sheets",
       });
     }
 
-    // Find or create inventory record for this output item
+    // Find or create the inventory record for the printed-variant item.
     let outputInventory = await Inventory.findOne({ itemRef: outputItem._id });
     if (!outputInventory) {
       outputInventory = await Inventory.create({
         itemRef: outputItem._id,
-        warehouseLocation: sourceInventory?.warehouseLocation || "Production",
+        warehouseLocation: "Production",
         currentStock: 0,
         reservedStock: 0,
         reorderLevel: 0,
@@ -197,9 +231,9 @@ export const completeJobWork = async (req: any, res: any) => {
       });
     }
 
-    // Add quantity to output inventory
+    // Add the produced sheets to the output inventory.
     await Inventory.findByIdAndUpdate(outputInventory._id, {
-      $inc: { currentStock: job.quantity },
+      $inc: { currentStock: sheets },
       lastRestockedDate: new Date(),
     });
 
@@ -207,14 +241,14 @@ export const completeJobWork = async (req: any, res: any) => {
     await StockTransaction.create({
       inventoryRef: outputInventory._id,
       type: "IN",
-      quantity: job.quantity,
+      quantity: sheets,
       referenceNumber: job.jobNumber,
-      notes: `Job Work ${job.jobNumber} completed — ${job.quantity} units of ${outputItemName} produced`,
+      notes: `Job Work ${job.jobNumber} completed — ${sheets} sheets of ${outputItem.itemName} produced`,
     });
 
     // Mark job completed
     job.status = "Completed";
-    job.outputInventoryRef = outputInventory._id;
+    job.outputInventoryRef = outputInventory._id as any;
     await job.save();
 
     if ((job as any).sourceOrderRef) {

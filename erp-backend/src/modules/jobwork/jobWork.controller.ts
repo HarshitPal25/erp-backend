@@ -16,8 +16,8 @@ function getPrintedPrefix(jobType: string) {
 }
 
 function getOutputCategory(jobType: string) {
-  if (jobType === "Printed+Laminated") return "Printed+Laminated Stock";
-  if (jobType === "Printed+SpotUV") return "Printed+SpotUV Stock";
+  if (jobType === "Printed+Laminated") return "Printed + Laminated Stock";
+  if (jobType === "Printed+SpotUV") return "Printed + Spot UV Stock";
   return "Printed Stock";
 }
 

@@ -5,6 +5,23 @@ import StockTransaction from "../../models/StockTransaction";
 import JobWork from "../../models/jobWork.model";
 import Dispatch from "../../models/dispatch.model";
 
+function parseLeadingNumber(value: any): number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return 0;
+  const match = value.match(/\d+(\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+
+function computeCorrugatedDeduction(
+  reelSize: number,
+  length: number,
+  gsm: number,
+  noOf2Ply: number,
+  totalSheets: number
+) {
+  return (((reelSize * length) / 1500) * gsm / 1000) * noOf2Ply * totalSheets;
+}
+
 // Helper: flatten nested order doc into a flat object for the frontend
 function flattenOrder(o: any) {
   const qtyOrdered = o.orderInfo?.quantityOrdered || o.quantityOrdered || 0;
@@ -54,8 +71,6 @@ function flattenOrder(o: any) {
  * Creates StockTransaction OUT records for audit trail.
  */
 async function deductInventoryOnCompletion(order: any) {
-  // Printed orders deduct at job work (source) and dispatch (finished good),
-  // so skip the raw-material category deduction for them.
   if (order?.finishing?.printed) {
     return [];
   }
@@ -583,7 +598,16 @@ export const deleteOrder = async (req: any, res: any) => {
 export const createDispatchFromOrder = async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { customerAddress, dispatchDate, quantity, senderName } = req.body;
+    const {
+      customerAddress,
+      dispatchDate,
+      quantity,
+      senderName,
+      corrugatedRollInventoryId,
+      corrugatedLength,
+      corrugatedNoOf2Ply,
+      corrugatedTotalSheets,
+    } = req.body;
 
     const order = await Order.findById(id);
     if (!order) {
@@ -672,6 +696,74 @@ export const createDispatchFromOrder = async (req: any, res: any) => {
       printedInventoryId = printedInventory._id;
     }
 
+    let corrugatedDeduction:
+      | {
+          inventoryId: any;
+          qty: number;
+          rollName: string;
+          reelSize: number;
+          gsm: number;
+          length: number;
+          noOf2Ply: number;
+          totalSheets: number;
+        }
+      | null = null;
+    if (corrugatedRollInventoryId) {
+      const roll = await Inventory.findById(corrugatedRollInventoryId).populate("itemRef");
+      if (!roll) {
+        return res.status(404).json({
+          success: false,
+          message: "Selected corrugated roll not found",
+        });
+      }
+
+      const rollItem = roll.itemRef as any;
+      const reelSize = parseLeadingNumber(rollItem?.specifications?.dimensions);
+      const gsm = Number(rollItem?.specifications?.gsm) || 0;
+      const length = Number(corrugatedLength) || 0;
+      const noOf2Ply = Number(corrugatedNoOf2Ply) || 0;
+      const totalSheets = Number(corrugatedTotalSheets) || 0;
+
+      if (reelSize <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected corrugated roll has no numeric reel size in its dimensions.",
+        });
+      }
+      if (gsm <= 0 || length <= 0 || noOf2Ply <= 0 || totalSheets <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Corrugated roll deduction needs GSM, length, no. of 2-ply and total sheets as positive numbers.",
+        });
+      }
+
+      const deductQty =
+        Math.round(computeCorrugatedDeduction(reelSize, length, gsm, noOf2Ply, totalSheets) * 100) / 100;
+      if (deductQty <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Computed corrugated roll deduction is zero.",
+        });
+      }
+      if (roll.currentStock < deductQty) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient corrugated roll stock. Available: ${roll.currentStock}, Required: ${deductQty}`,
+        });
+      }
+
+      corrugatedDeduction = {
+        inventoryId: roll._id,
+        qty: deductQty,
+        rollName: rollItem?.itemName || "Corrugated Roll",
+        reelSize,
+        gsm,
+        length,
+        noOf2Ply,
+        totalSheets,
+      };
+    }
+
     const dispatch = await Dispatch.create({
       dispatchNo: await nextDispatchNumber(),
       dispatchDate: dispatchDate || new Date().toISOString().slice(0, 10),
@@ -689,6 +781,17 @@ export const createDispatchFromOrder = async (req: any, res: any) => {
           quantity: dispatchQty,
         },
       ],
+      corrugatedConsumption: corrugatedDeduction
+        ? {
+            rollName: corrugatedDeduction.rollName,
+            quantityKg: corrugatedDeduction.qty,
+            reelSize: corrugatedDeduction.reelSize,
+            gsm: corrugatedDeduction.gsm,
+            length: corrugatedDeduction.length,
+            noOf2Ply: corrugatedDeduction.noOf2Ply,
+            totalSheets: corrugatedDeduction.totalSheets,
+          }
+        : undefined,
     });
 
     // Deduct the finished printed item from inventory and log the OUT movement.
@@ -703,6 +806,21 @@ export const createDispatchFromOrder = async (req: any, res: any) => {
         quantity: dispatchQty,
         referenceNumber: dispatch.dispatchNo,
         notes: `Order ${order.orderInfo?.orderNumber || ""} dispatched — ${dispatchQty} units of printed stock`,
+      });
+    }
+
+    // Deduct the corrugated roll consumed for the paste-up.
+    if (corrugatedDeduction) {
+      await Inventory.findByIdAndUpdate(corrugatedDeduction.inventoryId, {
+        $inc: { currentStock: -corrugatedDeduction.qty },
+      });
+
+      await StockTransaction.create({
+        inventoryRef: corrugatedDeduction.inventoryId,
+        type: "OUT",
+        quantity: corrugatedDeduction.qty,
+        referenceNumber: dispatch.dispatchNo,
+        notes: `Order ${order.orderInfo?.orderNumber || ""} dispatched — ${corrugatedDeduction.qty} KG of ${corrugatedDeduction.rollName} consumed for paste-up`,
       });
     }
 

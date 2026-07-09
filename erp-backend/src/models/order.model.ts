@@ -171,17 +171,17 @@ const OrderSchema = new Schema(
       default: false,
     },
 
-    spotUVSize: {
+    PrintingSize: {
       type: Number,
       default: 0,
     },
 
-    spotUVSheets: {
+    PrintingSheets: {
       type: Number,
       default: 0,
     },
 
-    spotUVCost: {
+    PrintingCost: {
       type: Number,
       default: 0,
     },
@@ -243,7 +243,7 @@ const OrderSchema = new Schema(
       default: 0,
     },
 
-    spotUVCost: {
+    PrintingCost: {
       type: Number,
       default: 0,
     },

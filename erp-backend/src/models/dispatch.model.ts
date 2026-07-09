@@ -11,6 +11,19 @@ const DispatchItemSchema = new Schema(
   { _id: false }
 );
 
+const CorrugatedConsumptionSchema = new Schema(
+  {
+    rollName: { type: String, trim: true },
+    quantityKg: { type: Number },
+    reelSize: { type: Number },
+    gsm: { type: Number },
+    length: { type: Number },
+    noOf2Ply: { type: Number },
+    totalSheets: { type: Number },
+  },
+  { _id: false }
+);
+
 const DispatchSchema = new Schema(
   {
     dispatchNo: { type: String, required: true, unique: true, trim: true },
@@ -28,6 +41,10 @@ const DispatchSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Order",
       default: null,
+    },
+    corrugatedConsumption: {
+      type: CorrugatedConsumptionSchema,
+      default: undefined,
     },
   },
   {
